@@ -205,7 +205,7 @@ def _(mo):
     mo.md(r"""
     ## Intro
 
-    The story alternates between micro-demos and longer explorations (fractals, astronomy and biological data). You can read it linearly, but every demo is independent — feel free to skip to whichever one calls to you. The accompanying library [`hdrviz`](https://github.com/ktaletsk/hdrviz) is MIT-licensed and avilable on PyPI; everything else in this notebook either consumes it or surrounds it with explanation.
+    The story alternates between micro-demos and longer explorations (fractals, astronomy and biological data). You can read it linearly, but every demo is independent — feel free to skip to whichever one calls to you. The accompanying library [`hdrviz`](https://github.com/ktaletsk/hdrviz) is MIT-licensed and [avilable on PyPI](https://pypi.org/project/hdrviz/); everything else in this notebook either consumes it or surrounds it with explanation.
 
     ## Before we start, let's check what display capabilities you have.
     Browser API can report it and we can check it in our widget. Please, re-run the cell if you move the notebook window between displays
@@ -828,14 +828,11 @@ def _(fetch_asset, to_data_url):
     # history for the original make_metal_badge_png helper).
     HDR_BADGE_DATA_URL = to_data_url(fetch_asset("hdr_badge.png"))
     SDR_BADGE_DATA_URL = to_data_url(fetch_asset("sdr_badge.png"))
-
     return HDR_BADGE_DATA_URL, SDR_BADGE_DATA_URL
 
 
 @app.cell(hide_code=True)
-def _(HDRImage, LOGO_DATA_URL, imshow, mo):
-    import inspect
-
+def _(LOGO_DATA_URL, mo):
     mo.md(
         '<div style="display:flex; align-items:center; gap:18px; margin: 12px 0 18px;">'
         '<img src="' + LOGO_DATA_URL + '" alt="hdrviz logo" '
@@ -852,12 +849,87 @@ def _(HDRImage, LOGO_DATA_URL, imshow, mo):
         "[`colour-science`](https://www.colour-science.org/), which the library wraps. "
         "The PNG encoding, ICC profile embedding, colormap interpolation, and the anywidget "
         "are ours. MIT-licensed; depends only on `numpy`, `colour-science`, `Pillow`, "
-        "`anywidget`, and `traitlets`.\n\n"
-        "### `imshow(arr, cmap, peak_nits, ...)`\n\n"
-        "```python\n" + inspect.getsource(imshow) + "\n```\n\n"
-        "### `class HDRImage`\n\n"
-        "```python\n" + inspect.getsource(HDRImage) + "\n```"
+        "`anywidget`, and `traitlets`."
     )
+
+    return
+
+
+@app.cell(hide_code=True)
+def _(imshow, mo):
+    import inspect as _inspect
+
+
+    def _fmt_function_api(fn):
+        """def-line + docstring only; no body."""
+        sig = _inspect.signature(fn)
+        params = list(sig.parameters.values())
+        lines = [f"def {fn.__name__}("]
+        for i, p in enumerate(params):
+            comma = "," if i < len(params) - 1 else ""
+            ann = ""
+            if p.annotation is not _inspect.Parameter.empty:
+                a = p.annotation
+                ann = ": " + (a if isinstance(a, str) else getattr(a, "__name__", str(a)))
+            default = ""
+            if p.default is not _inspect.Parameter.empty:
+                default = " = " + repr(p.default)
+            lines.append(f"    {p.name}{ann}{default}{comma}")
+        closer = ")"
+        if sig.return_annotation is not _inspect.Signature.empty:
+            ret = sig.return_annotation
+            ret_str = ret.strip("'\"") if isinstance(ret, str) else getattr(ret, "__name__", str(ret))
+            closer = f") -> {ret_str}"
+        lines.append(closer + ":")
+        doc = _inspect.getdoc(fn) or ""
+        indented_doc = "\n".join("    " + line if line else "" for line in doc.split("\n"))
+        lines.append('    """')
+        lines.append(indented_doc)
+        lines.append('    """')
+        return "\n".join(lines)
+
+
+    mo.md(
+        "### `imshow(arr, cmap, peak_nits, ...)`\n\n"
+        "```python\n" + _fmt_function_api(imshow) + "\n```"
+    )
+
+    return
+
+
+@app.cell(hide_code=True)
+def _(HDRImage, mo):
+    import inspect as _inspect
+    import traitlets as _tl
+
+
+    def _fmt_class_api(cls):
+        """class header + docstring + sync'd traits declared on this class only."""
+        bases = ", ".join(b.__name__ for b in cls.__bases__) or "object"
+        doc = _inspect.getdoc(cls) or ""
+        indented_doc = "\n".join("    " + line if line else "" for line in doc.split("\n"))
+        parts = [f"class {cls.__name__}({bases}):", '    """', indented_doc, '    """']
+        own_traits = [
+            (name, val)
+            for name, val in cls.__dict__.items()
+            if isinstance(val, _tl.TraitType) and val.metadata.get("sync")
+        ]
+        if own_traits:
+            parts.append("")
+            for name, trait in own_traits:
+                type_name = trait.__class__.__name__
+                default = trait.default_value
+                parts.append(
+                    f"    {name} = traitlets.{type_name}({default!r}).tag(sync=True)"
+                )
+        return "\n".join(parts)
+
+
+    mo.md(
+        "### `class HDRImage`\n\n"
+        "```python\n" + _fmt_class_api(HDRImage) + "\n```"
+    )
+
     return
 
 
@@ -1482,7 +1554,7 @@ def _(dynamic_range, horsehead, mandelbrot, membr_2d, mo, np, nuclei_2d):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Wrap-up
+    ## Wrap-up
 
     Three demos, one library: a Mandelbrot explorer, a 19th-century photographic plate of the Horsehead Nebula, and a real fluorescence microscope frame of stem cells. All four datasets have different native dynamic ranges, and the membrane channel of `cells3d` is the surprise winner — its 159× ratio between brightest and dimmest signals is more than the Horsehead's 6×, which is why the cells glow harder than the nebula does on your screen.
 
@@ -1502,6 +1574,11 @@ def _(mo):
 
     The recipe is simple: PQ-encoded RGB nits + Rec2020 ICC profile + `<img>` tag = HDR rendering in any modern Chromium browser, today.
     """)
+    return
+
+
+@app.cell
+def _():
     return
 
 
