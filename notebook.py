@@ -201,6 +201,19 @@ def _(GLOW_HDR_DATA_URL, LOGO_DATA_URL, mo):
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Intro
+
+    The story alternates between micro-demos and longer explorations (fractals, astronomy and biological data). You can read it linearly, but every demo is independent — feel free to skip to whichever one calls to you. The accompanying library [`hdrviz`](https://github.com/ktaletsk/hdrviz) is MIT-licensed and avilable on PyPI; everything else in this notebook either consumes it or surrounds it with explanation.
+
+    ## Before we start, let's check what display capabilities you have.
+    Browser API can report it and we can check it in our widget. Please, re-run the cell if you move the notebook window between displays
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def _(
     HDR_BADGE_DATA_URL,
     SDR_BADGE_DATA_URL,
@@ -514,23 +527,6 @@ def _(
 
 
     return (HeadroomDetector,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    The story alternates between micro-demos (a self-detecting monitor, a CSS toggle, a clickable bouncing badge) and longer explorations (Mandelbrot, the Horsehead Nebula, fluorescent stem cells). You can read it linearly, but every demo is independent — feel free to skip to whichever one calls to you. The accompanying library [`hdr_viz.py`](./hdr_viz.py) is MIT-licensed and the published deliverable; everything else in this notebook either consumes it or surrounds it with explanation.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Before we start, let's check what display capabilities you have.
-    Browser API can report it and we can check it in our widget. Please, re-run the cell if you move the notebook window between displays
-    """)
-    return
 
 
 @app.cell(hide_code=True)
