@@ -203,12 +203,11 @@ def _(GLOW_HDR_DATA_URL, LOGO_DATA_URL, mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Intro
+    The story alternates between micro-demos and longer explorations (fractals, astronomy and biological data). You can read it linearly, but every demo is independent — feel free to skip to whichever one calls to you. The accompanying library [`hdrviz`](https://github.com/ktaletsk/hdrviz) is MIT-licensed and [available on PyPI](https://pypi.org/project/hdrviz/); everything else in this notebook either consumes it or surrounds it with explanation.
 
-    The story alternates between micro-demos and longer explorations (fractals, astronomy and biological data). You can read it linearly, but every demo is independent — feel free to skip to whichever one calls to you. The accompanying library [`hdrviz`](https://github.com/ktaletsk/hdrviz) is MIT-licensed and [avilable on PyPI](https://pypi.org/project/hdrviz/); everything else in this notebook either consumes it or surrounds it with explanation.
+    ## Display capabilities
 
-    ## Before we start, let's check what display capabilities you have.
-    Browser API can report it and we can check it in our widget. Please, re-run the cell if you move the notebook window between displays
+    Browser API can report it and we can check it in our widget. Please, re-run the cell if you move the notebook window between displays.
     """)
     return
 
@@ -834,6 +833,7 @@ def _(fetch_asset, to_data_url):
 @app.cell(hide_code=True)
 def _(LOGO_DATA_URL, mo):
     mo.md(
+        "## hdrviz\n\n"
         '<div style="display:flex; align-items:center; gap:18px; margin: 12px 0 18px;">'
         '<img src="' + LOGO_DATA_URL + '" alt="hdrviz logo" '
         'style="width:96px; height:96px; border-radius:18px; flex-shrink:0;">'
@@ -851,7 +851,6 @@ def _(LOGO_DATA_URL, mo):
         "are ours. MIT-licensed; depends only on `numpy`, `colour-science`, `Pillow`, "
         "`anywidget`, and `traitlets`."
     )
-
     return
 
 
@@ -893,7 +892,6 @@ def _(imshow, mo):
         "### `imshow(arr, cmap, peak_nits, ...)`\n\n"
         "```python\n" + _fmt_function_api(imshow) + "\n```"
     )
-
     return
 
 
@@ -929,13 +927,14 @@ def _(HDRImage, mo):
         "### `class HDRImage`\n\n"
         "```python\n" + _fmt_class_api(HDRImage) + "\n```"
     )
-
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## PQ encoding
+
     The PQ encoding (SMPTE ST 2084 / "perceptual quantizer") maps linear-light luminance in cd/m² to code values, designed so one code-value step ≈ one just-noticeable difference for the human visual system. The math is implemented in [colour-science](https://www.colour-science.org/):
 
     ```python
@@ -944,6 +943,20 @@ def _(mo):
     ```
 
     That single line is the mathematical core of `hdrviz.encode_hdr_png`.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## Demos
+
+    Three datasets across three domains: a synthetic fractal, a photographic plate of a nebula, and a fluorescence-microscopy frame. Each goes through the same `hdrviz.imshow` call; the only things that change between them are the colormap and the clip thresholds.
+
+    ### Mandelbrot
+
+    Click anywhere on the image to recenter; the preset buttons jump to known navigation points where the HDR contribution is broad enough to read at a glance. Toggle HDR off to A/B the same pixels — the only thing changing is the CSS `dynamic-range-limit`.
     """)
     return
 
@@ -1310,8 +1323,6 @@ def _(mo):
     - **Fractals** — the smooth-iteration count near the Mandelbrot boundary is heavily skewed toward "just-escaped" pixels, with far higher density than the body.
     - **Energy spectra and FFTs** — log-magnitude is often the only readable representation, precisely because the linear range is too wide.
     - **Density / kernel-estimate plots** — sharp peaks over near-uniform backgrounds.
-
-    How do we measure that for a given dataset? Formula and simple numpy code in the next two cells. Then we'll apply it to the first example below: a 19th-century photographic plate of the Horsehead Nebula.
     """)
     return
 
@@ -1390,6 +1401,16 @@ def _(mo, np):
     return dr_box, dynamic_range
 
 
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ### Astronomy: Horsehead Nebula
+
+    A 19th-century photographic plate of B33 / IC 434, ~6× native dynamic range. Modest by deep-Hubble standards, but enough that the brightest stars and the Hα glow near Sigma Ori cross into HDR luminance while the dust silhouette stays in SDR.
+    """)
+    return
+
+
 @app.cell(hide_code=True)
 def _(HDRImage, dr_box, fetch_asset, imshow, mo):
     import io as _io
@@ -1439,7 +1460,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Fluorescence imaging, briefly
+    ### Fluorescence microscopy
 
     A specimen is tagged with a fluorescent dye or genetically encoded protein (e.g. GFP), excited at one wavelength, and longer-wavelength emission is captured by a camera through an optical filter. Each pixel reports the photon count integrated over the exposure window. Densely labeled features (cell membranes, nuclei) may collect tens of thousands of photons per pixel; faint cytoplasm or background may collect only a few, sitting near the camera's read-noise floor. **That spread is the dynamic range** — and the more of it you preserve, the more biology you can see in one frame.
 
