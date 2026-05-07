@@ -539,19 +539,57 @@ def _(HeadroomDetector):
 
 @app.cell(hide_code=True)
 def _():
-    import base64, pathlib
+    import base64, pathlib, urllib.request
 
-    PNG_PATH = pathlib.Path("assets/orbrx-glowing.png")
-    PNG_BYTES = PNG_PATH.read_bytes()
+    # Public URLs the notebook can fall back to when running in molab / nbviewer
+    # / any sandbox that strips the local assets/ directory. Local files take
+    # precedence so the notebook is fast on the author's machine.
+    ASSET_URLS = {
+        "orbrx-glowing.png":     "https://raw.githubusercontent.com/ktaletsk/hdrviz/main/assets/orbrx-glowing.png",
+        "xdr_display_frame.png": "https://raw.githubusercontent.com/ktaletsk/hdrviz/main/assets/xdr_display_frame.png",
+        "logo.svg":              "https://raw.githubusercontent.com/ktaletsk/hdrviz/main/assets/logo.svg",
+        "HorseHead.fits":        "https://www.astropy.org/astropy-data/tutorials/FITS-images/HorseHead.fits",
+        "cells3d.tif":           "https://gitlab.com/scikit-image/data/-/raw/2cdc5ce89b334d28f06a58c9f0ca21aa6992a5ba/cells3d.tif",
+    }
+    _ASSET_BYTES_CACHE: dict = {}
+
+
+    def fetch_asset(name: str) -> bytes:
+        """Load an asset by name. Tries assets/<name> first; falls back to the
+        URL in ASSET_URLS. Cached in-memory for the kernel session."""
+        if name in _ASSET_BYTES_CACHE:
+            return _ASSET_BYTES_CACHE[name]
+        local = pathlib.Path("assets") / name
+        if local.exists():
+            data = local.read_bytes()
+        else:
+            url = ASSET_URLS.get(name)
+            if not url:
+                raise FileNotFoundError(
+                    f"asset {name!r} not found at assets/{name} and no fallback URL configured"
+                )
+            with urllib.request.urlopen(url, timeout=60) as r:
+                data = r.read()
+        _ASSET_BYTES_CACHE[name] = data
+        return data
+
+
+    PNG_BYTES = fetch_asset("orbrx-glowing.png")
     PNG_DATA_URL = "data:image/png;base64," + base64.b64encode(PNG_BYTES).decode("ascii")
-    PNG_LABEL = PNG_PATH.name
+    PNG_LABEL = "orbrx-glowing.png"
 
-    XDR_FRAME_BYTES = pathlib.Path("assets/xdr_display_frame.png").read_bytes()
+    XDR_FRAME_BYTES = fetch_asset("xdr_display_frame.png")
     XDR_FRAME_DATA_URL = "data:image/png;base64," + base64.b64encode(XDR_FRAME_BYTES).decode("ascii")
 
-    LOGO_SVG_BYTES = pathlib.Path("assets/logo.svg").read_bytes()
+    LOGO_SVG_BYTES = fetch_asset("logo.svg")
     LOGO_DATA_URL = "data:image/svg+xml;base64," + base64.b64encode(LOGO_SVG_BYTES).decode("ascii")
-    return LOGO_DATA_URL, PNG_DATA_URL, PNG_LABEL, XDR_FRAME_DATA_URL
+    return (
+        LOGO_DATA_URL,
+        PNG_DATA_URL,
+        PNG_LABEL,
+        XDR_FRAME_DATA_URL,
+        fetch_asset,
+    )
 
 
 @app.cell
@@ -1341,14 +1379,15 @@ def _(mo, np):
 
 
 @app.cell(hide_code=True)
-def _(HDRImage, dr_box, imshow, mo):
+def _(HDRImage, dr_box, fetch_asset, imshow, mo):
+    import io as _io
     from astropy.io import fits
 
     # Real astronomy data: Horsehead Nebula (B33 / IC 434) photographic plate.
     # Source: astropy tutorials sample. ~6x dynamic range -- modest by deep-Hubble
     # standards, but enough that the brightest stars + Halpha glow hit the HDR
     # top end while diffuse dust stays in SDR luminance.
-    with fits.open("assets/HorseHead.fits") as _hdul:
+    with fits.open(_io.BytesIO(fetch_asset("HorseHead.fits"))) as _hdul:
         horsehead = _hdul[0].data.astype(float)
 
     horsehead_hdr = imshow(
@@ -1424,14 +1463,15 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(HDRImage, dr_box, imshow, mo):
+def _(HDRImage, dr_box, fetch_asset, imshow, mo):
+    import io as _io
     import tifffile
 
     # Real fluorescence-microscopy data: scikit-image's cells3d sample.
     # Two-channel z-stack (z=60, c=2, y=256, x=256) of human pluripotent stem
     # cells. Channel 0 = membrane stain, channel 1 = DNA (nuclei).
     # Native dynamic range ~150x in the membrane channel -- genuinely HDR.
-    cells_zct = tifffile.imread("assets/cells3d.tif")
+    cells_zct = tifffile.imread(_io.BytesIO(fetch_asset("cells3d.tif")))
     _mid_z = cells_zct.shape[0] // 2
     nuclei_2d = cells_zct[_mid_z, 1].astype(float)
     membr_2d  = cells_zct[_mid_z, 0].astype(float)
