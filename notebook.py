@@ -1020,16 +1020,22 @@ def _(mo):
 def _(anywidget, encode_hdr_png, to_data_url, traitlets):
     class QuantizationCalibration(anywidget.AnyWidget):
         """Linear vs PQ quantization, calibration-screen-style. Choose a bit depth
-        and see which of the 8 grayscale bands stay distinguishable in each encoding."""
+        and see which of the 8 grayscale bands stay distinguishable in each encoding.
+        Includes a side diagram plotting target vs quantized luminance on a log axis."""
 
         bits = traitlets.Int(5).tag(sync=True)
+        y_scale = traitlets.Unicode("log").tag(sync=True)
         band_count = traitlets.Int(8).tag(sync=True)
 
-        # Pre-rendered per bit depth: data-URL strips and unique-value counts
         bands_linear = traitlets.Dict({}).tag(sync=True)
         bands_pq = traitlets.Dict({}).tag(sync=True)
         distinct_linear = traitlets.Dict({}).tag(sync=True)
         distinct_pq = traitlets.Dict({}).tag(sync=True)
+
+        # Numeric series for the side diagram
+        target_nits_list = traitlets.List([]).tag(sync=True)
+        quantized_linear_nits = traitlets.Dict({}).tag(sync=True)
+        quantized_pq_nits = traitlets.Dict({}).tag(sync=True)
 
         def __init__(self, **kw):
             super().__init__(**kw)
@@ -1039,10 +1045,9 @@ def _(anywidget, encode_hdr_png, to_data_url, traitlets):
             import numpy as _np
             import colour as _colour
             N = self.band_count
-            # Log-spaced from deep shadow (0.5 nit) to a typical HDR peak (4000 nits)
             bands_nits = _np.geomspace(0.5, 4000.0, N)
             peak_nits = 10000.0
-            bl, bp, dl, dp = {}, {}, {}, {}
+            bl, bp, dl, dp, ql, qp = {}, {}, {}, {}, {}, {}
             for bits in range(3, 11):
                 levels = 2 ** bits - 1
                 lin_codes = _np.round(_np.clip(bands_nits, 0, peak_nits) / peak_nits * levels)
@@ -1054,10 +1059,15 @@ def _(anywidget, encode_hdr_png, to_data_url, traitlets):
                 bp[str(bits)] = self._render_strip(pq_decoded)
                 dl[str(bits)] = int(len(_np.unique(_np.round(lin_decoded, 4))))
                 dp[str(bits)] = int(len(_np.unique(_np.round(pq_decoded, 4))))
+                ql[str(bits)] = lin_decoded.tolist()
+                qp[str(bits)] = pq_decoded.tolist()
+            self.target_nits_list = bands_nits.tolist()
             self.bands_linear = bl
             self.bands_pq = bp
             self.distinct_linear = dl
             self.distinct_pq = dp
+            self.quantized_linear_nits = ql
+            self.quantized_pq_nits = qp
 
         def _render_strip(self, band_nits, w_per_band=88, height=72):
             import numpy as _np
@@ -1079,39 +1089,152 @@ def _(anywidget, encode_hdr_png, to_data_url, traitlets):
               .qc-bits-slider { flex: 0 0 220px; }
               .qc-bits-val { font-family: ui-monospace, SFMono-Regular, monospace;
                 font-variant-numeric: tabular-nums; min-width: 56px; }
+              .qc-main { display:grid; grid-template-columns: 1fr auto; gap: 18px;
+                align-items: center; }
+              .qc-bands { display: grid; gap: 12px; min-width: 0; }
               .qc-section { display: grid; gap: 6px; }
               .qc-label { font-size: 12px; font-weight: 600; opacity: 0.85; }
-              .qc-strip {
-                display: block; width: 100%; height: auto;
+              .qc-strip { display: block; width: 100%; height: auto;
                 background: #000; border-radius: 6px;
                 border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
-                image-rendering: pixelated;
-              }
+                image-rendering: pixelated; }
               .qc-info { font-family: ui-monospace, SFMono-Regular, monospace;
                 font-size: 12px; opacity: 0.85; }
               .qc-cnt { font-weight: 700; font-variant-numeric: tabular-nums; }
               .qc-cnt.bad { color: #ef4444; }
               .qc-cnt.ok  { color: #2a9d4a; }
+              .qc-toggle { display:flex; gap:0; align-self:center;
+                border:1px solid color-mix(in srgb, currentColor 25%, transparent);
+                border-radius:6px; overflow:hidden; }
+              .qc-toggle button { font:inherit; color:inherit; background:transparent;
+                border:none; padding:3px 10px; cursor:pointer;
+                font-size:11px; font-family: ui-monospace, SFMono-Regular, monospace; }
+              .qc-toggle button.active { background: color-mix(in srgb, currentColor 14%, transparent);
+                font-weight:700; }
+              .qc-toggle button:not(.active):hover {
+                background: color-mix(in srgb, currentColor 6%, transparent); }
+              .qc-plot { display: flex; flex-direction: column; gap: 6px; align-items:center; }
+              .qc-plot svg { display: block; }
+              .qc-plot .legend { display:flex; gap:10px; font-size:10px; opacity:0.85;
+                justify-content: center; font-family: ui-monospace, SFMono-Regular, monospace; }
+              .qc-plot .legend .swatch { display:inline-block; width:10px; height:2px;
+                margin-right:4px; vertical-align: middle; }
+              .qc-plot .legend .dash { background-image: repeating-linear-gradient(
+                to right, currentColor 0 3px, transparent 3px 5px); height:2px; }
             </style>
             <div class="qc-card">
               <div class="qc-row">
                 <label>bit depth</label>
-                <input id="qc-bits" class="qc-bits-slider" type="range" min="3" max="10" step="1" value="${model.get('bits')}">
+                <input id="qc-bits" class="qc-bits-slider" type="range"
+                       min="3" max="10" step="1" value="${model.get('bits')}">
                 <span class="qc-bits-val" id="qc-bits-val"></span>
                 <span class="qc-bits-val" id="qc-levels"></span>
               </div>
-              <div class="qc-section">
-                <div class="qc-label">Linear quantization</div>
-                <img id="qc-lin-img" class="qc-strip" alt="linear-quantized bands">
-                <div class="qc-info">distinguishable bands: <span id="qc-lin-cnt" class="qc-cnt">—</span> / <span id="qc-lin-total">—</span></div>
-              </div>
-              <div class="qc-section">
-                <div class="qc-label">PQ quantization</div>
-                <img id="qc-pq-img" class="qc-strip" alt="PQ-quantized bands">
-                <div class="qc-info">distinguishable bands: <span id="qc-pq-cnt" class="qc-cnt">—</span> / <span id="qc-pq-total">—</span></div>
+              <div class="qc-main">
+                <div class="qc-bands">
+                  <div class="qc-section">
+                    <div class="qc-label">Linear quantization</div>
+                    <img id="qc-lin-img" class="qc-strip" alt="linear-quantized bands">
+                    <div class="qc-info">distinguishable bands: <span id="qc-lin-cnt" class="qc-cnt">—</span> / <span id="qc-lin-total">—</span></div>
+                  </div>
+                  <div class="qc-section">
+                    <div class="qc-label">PQ quantization</div>
+                    <img id="qc-pq-img" class="qc-strip" alt="PQ-quantized bands">
+                    <div class="qc-info">distinguishable bands: <span id="qc-pq-cnt" class="qc-cnt">—</span> / <span id="qc-pq-total">—</span></div>
+                  </div>
+                </div>
+                <div class="qc-plot">
+                  <div class="qc-toggle" id="qc-yscale">
+                    <button data-scale="log">log y</button>
+                    <button data-scale="linear">linear y</button>
+                  </div>
+                  <div id="qc-svg"></div>
+                  <div class="legend">
+                    <span><span class="swatch dash"></span>target</span>
+                    <span><span class="swatch" style="background:#ef4444"></span>linear</span>
+                    <span><span class="swatch" style="background:#2a9d4a"></span>PQ</span>
+                  </div>
+                </div>
               </div>
             </div>
           `;
+
+          function buildSVG() {
+            const bits = String(model.get('bits'));
+            const targets = model.get('target_nits_list') || [];
+            const linQ = (model.get('quantized_linear_nits') || {})[bits] || [];
+            const pqQ  = (model.get('quantized_pq_nits')     || {})[bits] || [];
+            const W = 240, H = 180;
+            const pad = { l: 36, r: 10, t: 10, b: 26 };
+            const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+            const yMin = 0.1, yMax = 10000;
+            const lyMin = Math.log10(yMin), lyMax = Math.log10(yMax);
+            const N = targets.length;
+
+            const yScale = model.get('y_scale') || 'log';
+            function yPx(nits) {
+              if (yScale === 'linear') {
+                const linMax = 10000;
+                const norm = nits / linMax;
+                return pad.t + (1 - Math.min(Math.max(norm, -0.02), 1.02)) * plotH;
+              }
+              const clamped = nits <= 0 ? yMin / 2 : Math.max(nits, yMin);
+              const lv = Math.log10(clamped);
+              const norm = (lv - lyMin) / (lyMax - lyMin);
+              return pad.t + (1 - Math.min(Math.max(norm, -0.05), 1.05)) * plotH;
+            }
+            function xPx(i) {
+              return pad.l + (N <= 1 ? 0 : i / (N - 1) * plotW);
+            }
+            function poly(values) {
+              return values.map((v, i) => xPx(i) + ',' + yPx(v).toFixed(1)).join(' ');
+            }
+            function dots(values, color) {
+              return values.map((v, i) =>
+                '<circle cx="' + xPx(i) + '" cy="' + yPx(v).toFixed(1) +
+                '" r="2.6" fill="' + color + '"/>').join('');
+            }
+
+            // Gridlines + labels (different ticks per scale)
+            const decades = [];
+            const ticks = (yScale === 'linear')
+              ? [0, 2000, 4000, 6000, 8000, 10000]
+              : [0.1, 1, 10, 100, 1000, 10000];
+            for (const v of ticks) {
+              const y = yPx(v).toFixed(1);
+              const label = v >= 1000 ? (v / 1000) + 'k' : (v < 1 ? v.toFixed(1) : v);
+              decades.push(
+                '<line x1="' + pad.l + '" x2="' + (pad.l + plotW) + '" y1="' + y + '" y2="' + y +
+                '" stroke="currentColor" stroke-opacity="0.10" stroke-width="1"/>' +
+                '<text x="' + (pad.l - 4) + '" y="' + (Number(y) + 3) +
+                '" font-size="9" text-anchor="end" fill="currentColor" opacity="0.55">' +
+                label + '</text>'
+              );
+            }
+
+            return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H +
+                   '" xmlns="http://www.w3.org/2000/svg" style="overflow:visible">' +
+              decades.join('') +
+              // axes
+              '<line x1="' + pad.l + '" x2="' + pad.l + '" y1="' + pad.t + '" y2="' + (pad.t + plotH) +
+              '" stroke="currentColor" stroke-opacity="0.4"/>' +
+              '<line x1="' + pad.l + '" x2="' + (pad.l + plotW) + '" y1="' + (pad.t + plotH) +
+              '" y2="' + (pad.t + plotH) + '" stroke="currentColor" stroke-opacity="0.4"/>' +
+              // axis labels
+              '<text x="' + (pad.l + plotW / 2) + '" y="' + (H - 6) +
+              '" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.7">band index (1&ndash;' + N + ')</text>' +
+              '<text x="10" y="' + (pad.t + plotH / 2) +
+              '" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.7" transform="rotate(-90 10 ' + (pad.t + plotH / 2) + ')">nits (' + yScale + ')</text>' +
+              // target dashed line
+              '<polyline points="' + poly(targets) + '" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.7"/>' +
+              // linear (red)
+              '<polyline points="' + poly(linQ) + '" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-linejoin="round"/>' +
+              dots(linQ, '#ef4444') +
+              // PQ (green)
+              '<polyline points="' + poly(pqQ) + '" fill="none" stroke="#2a9d4a" stroke-width="1.5" stroke-linejoin="round"/>' +
+              dots(pqQ, '#2a9d4a') +
+              '</svg>';
+          }
 
           function update() {
             const bits = String(model.get('bits'));
@@ -1135,6 +1258,12 @@ def _(anywidget, encode_hdr_png, to_data_url, traitlets):
             pcEl.className = 'qc-cnt ' + (pc === total ? 'ok' : (pc < total / 2 ? 'bad' : ''));
             el.querySelector('#qc-lin-total').textContent = total;
             el.querySelector('#qc-pq-total').textContent  = total;
+            el.querySelector('#qc-svg').innerHTML = buildSVG();
+            // sync toggle active state
+            const yScale = model.get('y_scale') || 'log';
+            for (const b of el.querySelectorAll('#qc-yscale button')) {
+              b.classList.toggle('active', b.dataset.scale === yScale);
+            }
           }
 
           const slider = el.querySelector('#qc-bits');
@@ -1142,9 +1271,18 @@ def _(anywidget, encode_hdr_png, to_data_url, traitlets):
             model.set('bits', parseInt(slider.value, 10));
             model.save_changes();
           });
-          ['change:bits', 'change:bands_linear', 'change:bands_pq',
-           'change:distinct_linear', 'change:distinct_pq', 'change:band_count']
-            .forEach(ev => model.on(ev, update));
+          el.querySelector('#qc-yscale').addEventListener('click', (ev) => {
+            const btn = ev.target.closest('button[data-scale]');
+            if (!btn) return;
+            model.set('y_scale', btn.dataset.scale);
+            model.save_changes();
+          });
+          [
+            'change:bits', 'change:bands_linear', 'change:bands_pq',
+            'change:distinct_linear', 'change:distinct_pq', 'change:band_count',
+            'change:target_nits_list', 'change:quantized_linear_nits', 'change:quantized_pq_nits',
+            'change:y_scale',
+          ].forEach(ev => model.on(ev, update));
           update();
         }
         export default { render };
