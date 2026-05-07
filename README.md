@@ -52,9 +52,14 @@
 
 <p align="center">Data visualization in HDR.</p>
 
+
 ## About
 
 `hdrviz` is a minimal Python library (~250 lines) that renders 2D numpy arrays as PQ Rec2020-tagged PNGs for HDR-capable browsers.
+
+If your data has more dynamic range than 8-bit color can show — astrophotography, fluorescence microscopy, fractals, log-magnitude FFTs, density maps — `hdrviz` lets displays render the better contrast that's actually in the data.
+
+This library is an encoder plus a reference notebook widget. For axes, colorbars, channel mixing, pan/zoom — compose with matplotlib, plotly, or viv.
 
 ## Install
 
@@ -62,3 +67,71 @@
 pip install hdrviz
 ```
 
+## Quick start
+
+```python
+import numpy as np
+import hdrviz as hv
+
+data = np.random.RandomState(0).rand(400, 600)
+widget = hv.imshow(data, cmap="inferno-hdr", peak_nits=4000)
+widget   # display in a notebook
+```
+
+## Lower-level API
+
+`imshow` is a convenience wrapper over a three-step pipeline: apply a colormap to map normalized data to RGB linear-light luminance in cd/m² (nits), run the SMPTE ST 2084 inverse EOTF (the "PQ encoding," via [colour-science](https://www.colour-science.org/)), and write a PNG with an embedded PQ Rec2020 ICC profile that browsers know how to composite in extended dynamic range.
+
+```python
+from hdrviz import hdr_colormap, encode_hdr_png
+
+norm = (arr - arr.min()) / (arr.max() - arr.min())
+rgb_nits = hdr_colormap(norm, cmap_name="inferno-hdr", peak_nits=4000)
+png_bytes = encode_hdr_png(rgb_nits)   # PQ Rec2020-tagged PNG
+```
+
+PNG bytes are the deliverable. Serve them from a backend, write them to disk, embed them in custom HTML — anywhere that wants "an HDR image from a numpy array."
+
+## API surface
+
+| Symbol | Purpose |
+|---|---|
+| `encode_hdr_png(rgb_nits, icc_profile)` | PNG encoding from linear-light RGB nits |
+| `linear_nits_to_pq(rgb_nits)` | SMPTE ST 2084 inverse EOTF (wraps `colour-science`) |
+| `hdr_colormap(norm, cmap_name, peak_nits)` | apply a named HDR colormap |
+| `extract_icc_from_png(png_bytes)` | pull an ICC profile from a PNG's `iCCP` chunk |
+| `to_data_url(png_bytes)` | inline embedding helper |
+| `COLORMAP_LIBRARY` | seven HDR-aware colormaps (`fire-purple`, `ice`, `twilight-burst`, `matrix-green`, `ember`, `viridis-hdr`, `inferno-hdr`) |
+| `DEFAULT_PQ_REC2020_ICC` | bundled ICC profile (~9 KB, "Rec2020 Gamut with PQ Transfer") |
+| `imshow(arr, cmap, peak_nits, ...)` | quickstart wrapper that returns an `HDRImage` |
+| `class HDRImage(anywidget.AnyWidget)` | reference display widget with an SDR-clamp toggle |
+
+## What hdrviz isn't
+
+- **Plotting framework** with axes, ticks, labels, colorbars — compose with matplotlib
+- **Multi-channel mixing, contrast sliders, pan/zoom, multi-resolution tiling** — compose with [viv](https://github.com/hms-dbmi/viv), ideally with HDR PNG tiles encoded by `hdrviz`
+- **Animated or video HDR** — waits for `configureHighDynamicRange()` to ship in stable Chromium
+
+## Demo notebook
+
+[`notebook.py`](./notebook.py) is a marimo notebook with introducing the HDR data visualization idea:
+
+- A widget that checks your browser's HDR capabilities
+- An interactive Mandelbrot explorer with HDR colormaps and click-to-zoom
+- The Horsehead Nebula photographic plate from the astropy tutorials archive
+- A fluorescence-microscopy frame from `scikit-image.data.cells3d`, where the membrane channel's ~150× native dynamic range is the showstopper
+
+```bash
+git clone https://github.com/ktaletsk/hdrviz
+cd hdrviz
+marimo edit notebook.py --sandbox
+```
+
+## Browser support
+
+Tested and works in Chromium-based browsers.
+Safari mostly works, but had issues with some images not rendering in HDR.
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
