@@ -13,6 +13,9 @@
 #     "traitlets==5.14.3",
 # ]
 # requires-python = ">=3.13"
+#
+# [tool.marimo.display]
+# theme = "dark"
 # ///
 
 import marimo
@@ -859,19 +862,36 @@ def _(encode_hdr_png, np, to_data_url):
         text_img = Image.new("L", (W, H), 0)
         draw = ImageDraw.Draw(text_img)
         font = None
-        for fp in [
-            "/System/Library/Fonts/Supplemental/Arial Black.ttf",
-            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-            "/Library/Fonts/Arial.ttf",
-        ]:
+        # First try font names — fontconfig resolves on Linux, system font lookup on macOS/Windows.
+        for name in ("Arial Black", "Arial-Bold", "Arial Bold", "DejaVu Sans Bold",
+                     "DejaVuSans-Bold", "Helvetica-Bold"):
             try:
-                font = ImageFont.truetype(fp, int(H * 0.62))
+                font = ImageFont.truetype(name, int(H * 0.62))
                 break
             except (OSError, IOError):
                 continue
+        # Then try absolute paths (covers macOS + common Linux distros).
         if font is None:
-            font = ImageFont.load_default()
+            for fp in [
+                "/System/Library/Fonts/Supplemental/Arial Black.ttf",
+                "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+                "/System/Library/Fonts/Helvetica.ttc",
+                "/Library/Fonts/Arial.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+            ]:
+                try:
+                    font = ImageFont.truetype(fp, int(H * 0.62))
+                    break
+                except (OSError, IOError):
+                    continue
+        # Final fallback: Pillow's bundled TTF, sized (Pillow 10+).
+        if font is None:
+            try:
+                font = ImageFont.load_default(size=int(H * 0.62))
+            except TypeError:
+                font = ImageFont.load_default()
 
         bbox = draw.textbbox((0, 0), text, font=font)
         tw = bbox[2] - bbox[0]
