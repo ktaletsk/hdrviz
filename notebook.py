@@ -553,6 +553,8 @@ def _():
         "logo.svg":              "https://raw.githubusercontent.com/ktaletsk/hdrviz/main/assets/logo.svg",
         "HorseHead.fits":        "https://www.astropy.org/astropy-data/tutorials/FITS-images/HorseHead.fits",
         "cells3d.tif":           "https://gitlab.com/scikit-image/data/-/raw/2cdc5ce89b334d28f06a58c9f0ca21aa6992a5ba/cells3d.tif",
+        "hdr_badge.png":         "https://raw.githubusercontent.com/ktaletsk/hdrviz/main/assets/hdr_badge.png",
+        "sdr_badge.png":         "https://raw.githubusercontent.com/ktaletsk/hdrviz/main/assets/sdr_badge.png",
     }
     _ASSET_BYTES_CACHE: dict = {}
 
@@ -822,93 +824,15 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(encode_hdr_png, np, to_data_url):
-    def make_metal_badge_png(text: str = "HDR", *, width: int = 480, height: int = 130,
-                            peak_nits: float = 5000.0, mode: str = "gold") -> bytes:
-        """Render a metallic plate badge with bold text as a PQ Rec2020 PNG.
-        mode='gold' boosts the top of the gradient above SDR white (~peak_nits=5000) so
-        the plate genuinely glows on HDR displays. mode='silver' stays within SDR."""
-        from PIL import Image, ImageDraw, ImageFont
+def _(fetch_asset, to_data_url):
+    # HDR/SDR badges shown on the Pro Display XDR mockup. Pre-rendered locally
+    # (where macOS system fonts are available) and committed to assets/, fetched
+    # via fetch_asset() so the notebook is portable to molab and other sandboxes.
+    # To regenerate: run hdrviz/scripts/make_badges.py (or check older git
+    # history for the original make_metal_badge_png helper).
+    HDR_BADGE_DATA_URL = to_data_url(fetch_asset("hdr_badge.png"))
+    SDR_BADGE_DATA_URL = to_data_url(fetch_asset("sdr_badge.png"))
 
-        H, W = height, width
-
-        if mode == "gold":
-            # Warmer, more amber gradient (less yellow, more orange / copper)
-            pts   = np.array([0.00, 0.20, 0.55, 1.00])
-            R_pts = np.array([1.65, 1.30, 0.85, 0.42])
-            G_pts = np.array([1.05, 0.72, 0.38, 0.18])
-            B_pts = np.array([0.35, 0.12, 0.02, 0.01])
-        else:  # silver / chrome — capped below SDR white so it doesn't glow
-            pts   = np.array([0.00, 0.20, 0.55, 1.00])
-            R_pts = np.array([0.78, 0.55, 0.32, 0.18])
-            G_pts = np.array([0.78, 0.55, 0.32, 0.18])
-            B_pts = np.array([0.80, 0.57, 0.34, 0.20])
-
-        y = np.linspace(0.0, 1.0, H)
-        R = np.interp(y, pts, R_pts) * peak_nits
-        G = np.interp(y, pts, G_pts) * peak_nits
-        B = np.interp(y, pts, B_pts) * peak_nits
-
-        rgb = np.stack([
-            np.broadcast_to(R[:, None], (H, W)),
-            np.broadcast_to(G[:, None], (H, W)),
-            np.broadcast_to(B[:, None], (H, W)),
-        ], axis=-1).astype(np.float64).copy()
-
-        x = np.linspace(0.0, 1.0, W)
-        sheen = 1.0 - 0.06 * np.abs(x - 0.5) * 2
-        rgb *= sheen[None, :, None]
-
-        text_img = Image.new("L", (W, H), 0)
-        draw = ImageDraw.Draw(text_img)
-        font = None
-        # First try font names — fontconfig resolves on Linux, system font lookup on macOS/Windows.
-        for name in ("Arial Black", "Arial-Bold", "Arial Bold", "DejaVu Sans Bold",
-                     "DejaVuSans-Bold", "Helvetica-Bold"):
-            try:
-                font = ImageFont.truetype(name, int(H * 0.62))
-                break
-            except (OSError, IOError):
-                continue
-        # Then try absolute paths (covers macOS + common Linux distros).
-        if font is None:
-            for fp in [
-                "/System/Library/Fonts/Supplemental/Arial Black.ttf",
-                "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-                "/System/Library/Fonts/Helvetica.ttc",
-                "/Library/Fonts/Arial.ttf",
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-                "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-            ]:
-                try:
-                    font = ImageFont.truetype(fp, int(H * 0.62))
-                    break
-                except (OSError, IOError):
-                    continue
-        # Final fallback: Pillow's bundled TTF, sized (Pillow 10+).
-        if font is None:
-            try:
-                font = ImageFont.load_default(size=int(H * 0.62))
-            except TypeError:
-                font = ImageFont.load_default()
-
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        tx = (W - tw) // 2 - bbox[0]
-        ty = (H - th) // 2 - bbox[1]
-        draw.text((tx, ty), text, fill=255, font=font)
-        text_mask = np.asarray(text_img, dtype=np.float64) / 255.0
-
-        text_dark = np.array([5.0, 4.0, 3.0])
-        rgb = rgb * (1.0 - text_mask[..., None]) + text_dark[None, None, :] * text_mask[..., None]
-
-        return encode_hdr_png(rgb)
-
-
-    HDR_BADGE_DATA_URL = to_data_url(make_metal_badge_png("HDR", mode="gold", peak_nits=5000.0))
-    SDR_BADGE_DATA_URL = to_data_url(make_metal_badge_png("SDR", mode="silver", peak_nits=200.0))
     return HDR_BADGE_DATA_URL, SDR_BADGE_DATA_URL
 
 
