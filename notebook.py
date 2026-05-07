@@ -1006,53 +1006,153 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Linear vs PQ quantization, side by side
+    ### Calibration test: how many gradient steps survive?
 
-    The same gradient (0 to 4000 nits, displayed left-to-right), encoded with 6-bit codes two ways and decoded back. **Left:** linear quantization — equally-spaced codes in nits, which puts most of the 64 levels in the bright half and leaves the dark end with visible bands. **Right:** PQ quantization — codes are distributed by perception, so more land in the shadows where vision is most sensitive. Same 6 bits, smooth gradient.
+    A luminance gradient from 0.5 nits (deep shadow) to 4000 nits (bright HDR), **sampled at 8 log-spaced points and rendered as an 8×1 row of patches**. Each patch is quantized to the bit depth you choose — linear quantization on top, PQ on bottom. As you crank the bits down, watch the dark-end patches collapse: linear loses them first because it spends most of its codes on bright values the eye barely notices; PQ keeps them distinct by spacing codes perceptually.
+
+    The bit slider goes up to **10 bits** — the actual channel depth used by HDR PNG, HEVC HDR, and AV1 HDR. At **8 bits** (every standard PNG/JPEG channel ever) linear still loses two shadow patches. PQ has all eight by **4 bits**.
     """)
+
     return
 
 
-@app.cell
-def _(imshow, mo):
-    import numpy as _qnp
-    import colour as _qcolour
+@app.cell(hide_code=True)
+def _(anywidget, encode_hdr_png, to_data_url, traitlets):
+    class QuantizationCalibration(anywidget.AnyWidget):
+        """Linear vs PQ quantization, calibration-screen-style. Choose a bit depth
+        and see which of the 8 grayscale bands stay distinguishable in each encoding."""
 
-    _GRAD_W, _GRAD_H = 720, 180
-    _GRAD_PEAK_NITS = 4000.0
-    _PQ_PEAK_NITS = 10000.0
+        bits = traitlets.Int(5).tag(sync=True)
+        band_count = traitlets.Int(8).tag(sync=True)
+
+        # Pre-rendered per bit depth: data-URL strips and unique-value counts
+        bands_linear = traitlets.Dict({}).tag(sync=True)
+        bands_pq = traitlets.Dict({}).tag(sync=True)
+        distinct_linear = traitlets.Dict({}).tag(sync=True)
+        distinct_pq = traitlets.Dict({}).tag(sync=True)
+
+        def __init__(self, **kw):
+            super().__init__(**kw)
+            self._regenerate()
+
+        def _regenerate(self):
+            import numpy as _np
+            import colour as _colour
+            N = self.band_count
+            # Log-spaced from deep shadow (0.5 nit) to a typical HDR peak (4000 nits)
+            bands_nits = _np.geomspace(0.5, 4000.0, N)
+            peak_nits = 10000.0
+            bl, bp, dl, dp = {}, {}, {}, {}
+            for bits in range(3, 11):
+                levels = 2 ** bits - 1
+                lin_codes = _np.round(_np.clip(bands_nits, 0, peak_nits) / peak_nits * levels)
+                lin_decoded = lin_codes / levels * peak_nits
+                pq_codes = _colour.models.eotf_inverse_ST2084(_np.clip(bands_nits, 0, peak_nits))
+                pq_snapped = _np.round(pq_codes * levels) / levels
+                pq_decoded = _colour.models.eotf_ST2084(_np.clip(pq_snapped, 0, 1))
+                bl[str(bits)] = self._render_strip(lin_decoded)
+                bp[str(bits)] = self._render_strip(pq_decoded)
+                dl[str(bits)] = int(len(_np.unique(_np.round(lin_decoded, 4))))
+                dp[str(bits)] = int(len(_np.unique(_np.round(pq_decoded, 4))))
+            self.bands_linear = bl
+            self.bands_pq = bp
+            self.distinct_linear = dl
+            self.distinct_pq = dp
+
+        def _render_strip(self, band_nits, w_per_band=88, height=72):
+            import numpy as _np
+            N = len(band_nits)
+            img = _np.zeros((height, w_per_band * N, 3), dtype=_np.float64)
+            for i, nits in enumerate(band_nits):
+                img[:, i * w_per_band : (i + 1) * w_per_band, :] = float(nits)
+            return to_data_url(encode_hdr_png(img))
+
+        _esm = r"""
+        function render({ model, el }) {
+          el.innerHTML = `
+            <style>
+              .qc-card { font-family: system-ui, -apple-system, sans-serif; color: inherit;
+                border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+                border-radius: 12px; padding: 16px; display: grid; gap: 14px; }
+              .qc-row { display:flex; gap:12px; align-items:center; font-size:13px; }
+              .qc-row label { font-family: ui-monospace, SFMono-Regular, monospace; opacity:0.85; }
+              .qc-bits-slider { flex: 0 0 220px; }
+              .qc-bits-val { font-family: ui-monospace, SFMono-Regular, monospace;
+                font-variant-numeric: tabular-nums; min-width: 56px; }
+              .qc-section { display: grid; gap: 6px; }
+              .qc-label { font-size: 12px; font-weight: 600; opacity: 0.85; }
+              .qc-strip {
+                display: block; width: 100%; height: auto;
+                background: #000; border-radius: 6px;
+                border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+                image-rendering: pixelated;
+              }
+              .qc-info { font-family: ui-monospace, SFMono-Regular, monospace;
+                font-size: 12px; opacity: 0.85; }
+              .qc-cnt { font-weight: 700; font-variant-numeric: tabular-nums; }
+              .qc-cnt.bad { color: #ef4444; }
+              .qc-cnt.ok  { color: #2a9d4a; }
+            </style>
+            <div class="qc-card">
+              <div class="qc-row">
+                <label>bit depth</label>
+                <input id="qc-bits" class="qc-bits-slider" type="range" min="3" max="10" step="1" value="${model.get('bits')}">
+                <span class="qc-bits-val" id="qc-bits-val"></span>
+                <span class="qc-bits-val" id="qc-levels"></span>
+              </div>
+              <div class="qc-section">
+                <div class="qc-label">Linear quantization</div>
+                <img id="qc-lin-img" class="qc-strip" alt="linear-quantized bands">
+                <div class="qc-info">distinguishable bands: <span id="qc-lin-cnt" class="qc-cnt">—</span> / <span id="qc-lin-total">—</span></div>
+              </div>
+              <div class="qc-section">
+                <div class="qc-label">PQ quantization</div>
+                <img id="qc-pq-img" class="qc-strip" alt="PQ-quantized bands">
+                <div class="qc-info">distinguishable bands: <span id="qc-pq-cnt" class="qc-cnt">—</span> / <span id="qc-pq-total">—</span></div>
+              </div>
+            </div>
+          `;
+
+          function update() {
+            const bits = String(model.get('bits'));
+            const total = model.get('band_count');
+            const linImgs = model.get('bands_linear') || {};
+            const pqImgs  = model.get('bands_pq') || {};
+            const linCnts = model.get('distinct_linear') || {};
+            const pqCnts  = model.get('distinct_pq') || {};
+
+            el.querySelector('#qc-bits-val').textContent = `${bits} bits`;
+            el.querySelector('#qc-levels').textContent = `(${1 << parseInt(bits, 10)} levels)`;
+            el.querySelector('#qc-lin-img').src = linImgs[bits] || '';
+            el.querySelector('#qc-pq-img').src  = pqImgs[bits]  || '';
+            const lc = linCnts[bits] ?? '—';
+            const pc = pqCnts[bits] ?? '—';
+            const lcEl = el.querySelector('#qc-lin-cnt');
+            const pcEl = el.querySelector('#qc-pq-cnt');
+            lcEl.textContent = lc;
+            pcEl.textContent = pc;
+            lcEl.className = 'qc-cnt ' + (lc === total ? 'ok' : (lc < total / 2 ? 'bad' : ''));
+            pcEl.className = 'qc-cnt ' + (pc === total ? 'ok' : (pc < total / 2 ? 'bad' : ''));
+            el.querySelector('#qc-lin-total').textContent = total;
+            el.querySelector('#qc-pq-total').textContent  = total;
+          }
+
+          const slider = el.querySelector('#qc-bits');
+          slider.addEventListener('input', () => {
+            model.set('bits', parseInt(slider.value, 10));
+            model.save_changes();
+          });
+          ['change:bits', 'change:bands_linear', 'change:bands_pq',
+           'change:distinct_linear', 'change:distinct_pq', 'change:band_count']
+            .forEach(ev => model.on(ev, update));
+          update();
+        }
+        export default { render };
+        """
 
 
-    def _quantize_linear(values_nits, bits, max_nits=_PQ_PEAK_NITS):
-        """Quantize values_nits to N bits via a linear code mapping, then decode back."""
-        levels = 2 ** bits - 1
-        codes = _qnp.round(_qnp.clip(values_nits, 0, max_nits) / max_nits * levels)
-        return codes / levels * max_nits
-
-
-    def _quantize_pq(values_nits, bits, max_nits=_PQ_PEAK_NITS):
-        """Quantize via PQ: nits -> PQ codes (in [0,1]) -> N-bit quantize -> EOTF -> nits."""
-        levels = 2 ** bits - 1
-        pq = _qcolour.models.eotf_inverse_ST2084(_qnp.clip(values_nits, 0, max_nits))
-        snapped = _qnp.round(pq * levels) / levels
-        return _qcolour.models.eotf_ST2084(_qnp.clip(snapped, 0, 1))
-
-
-    _grad_nits = _qnp.linspace(0, _GRAD_PEAK_NITS, _GRAD_W)
-    _lin_band = _qnp.tile(_quantize_linear(_grad_nits, bits=6), (_GRAD_H, 1))
-    _pq_band  = _qnp.tile(_quantize_pq(_grad_nits, bits=6),     (_GRAD_H, 1))
-
-    linear_quantized = imshow(
-        _lin_band, cmap="ember", peak_nits=_GRAD_PEAK_NITS,
-        normalize="linear", vmin=0, vmax=_GRAD_PEAK_NITS,
-        label="6-bit linear quantization (visible banding)",
-    )
-    pq_quantized = imshow(
-        _pq_band, cmap="ember", peak_nits=_GRAD_PEAK_NITS,
-        normalize="linear", vmin=0, vmax=_GRAD_PEAK_NITS,
-        label="6-bit PQ quantization (smooth)",
-    )
-    mo.hstack([linear_quantized, pq_quantized], gap=1, widths="equal")
+    calibration = QuantizationCalibration()
+    calibration
 
     return
 
