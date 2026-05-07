@@ -55,6 +55,20 @@ def test_imshow_returns_widget_with_data_url():
     assert png_bytes.startswith(b"\x89PNG\r\n\x1a\n")
 
 
+def test_display_width_and_image_rendering_traits():
+    """v0.2.0: HDRImage exposes display_width + image_rendering, plumbed through imshow."""
+    # Defaults
+    bare = HDRImage()
+    assert bare.display_width == "100%"
+    assert bare.image_rendering == "auto"
+
+    # imshow forwards the kwargs
+    arr = np.zeros((20, 30))
+    w = imshow(arr, display_width="600px", image_rendering="pixelated")
+    assert w.display_width == "600px"
+    assert w.image_rendering == "pixelated"
+
+
 def test_imshow_validates_inputs():
     with pytest.raises(ValueError, match="2D array"):
         imshow(np.zeros(10))

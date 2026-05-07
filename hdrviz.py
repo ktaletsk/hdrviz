@@ -50,7 +50,7 @@ import numpy as np
 import traitlets
 from PIL import Image
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "DEFAULT_PQ_REC2020_ICC",
     "COLORMAP_LIBRARY",
@@ -392,6 +392,8 @@ def imshow(
     clip_percentile: tuple[float, float] | None = None,
     interior_mask: np.ndarray | None = None,
     label: str = "",
+    display_width: str = "100%",
+    image_rendering: str = "auto",
 ) -> "HDRImage":
     """Render a 2D numpy array as an HDR image. Returns an :class:`HDRImage` widget.
 
@@ -417,6 +419,15 @@ def imshow(
         interior_mask: Optional bool array same shape as ``arr``; ``True`` pixels
             render as black. Useful for fractal interiors, NaN regions, etc.
         label: Caption shown above the rendered image in the widget.
+        display_width: CSS ``width`` for the rendered ``<img>``. Default ``"100%"``
+            (fills the parent column, browser scales the PNG to fit). Use
+            ``"auto"`` to render at intrinsic pixel size, or e.g. ``"600px"`` /
+            ``"50vw"`` for an explicit size.
+        image_rendering: CSS ``image-rendering`` value, controlling how the
+            browser interpolates when scaling. Default ``"auto"`` (smooth /
+            bilinear). Use ``"pixelated"`` to preserve hard pixel edges (good
+            when each pixel is meaningful, e.g. raw scientific imagery), or
+            ``"crisp-edges"`` for a middle ground.
     """
     if arr.ndim != 2:
         raise ValueError(f"hdr_imshow expects a 2D array, got shape {arr.shape}")
@@ -472,7 +483,12 @@ def imshow(
     rgb_nits[treat_as_interior] = 0.0
 
     png = encode_hdr_png(rgb_nits)
-    return HDRImage(image_data_url=to_data_url(png), label=label)
+    return HDRImage(
+        image_data_url=to_data_url(png),
+        label=label,
+        display_width=display_width,
+        image_rendering=image_rendering,
+    )
 
 
 
@@ -499,11 +515,18 @@ class HDRImage(anywidget.AnyWidget):
     the ``<img>``, making the same pixels render in SDR. This is the cleanest
     A/B for showing HDR's contribution: same image, same display, one CSS
     property apart.
+
+    Sizing is controlled by two traits: ``display_width`` (any CSS width value;
+    default ``"100%"`` fills the parent column) and ``image_rendering`` (CSS
+    ``image-rendering``; default ``"auto"`` smooth, ``"pixelated"`` for raw
+    scientific data where hard pixel edges should be preserved).
     """
 
     image_data_url = traitlets.Unicode("").tag(sync=True)
     label = traitlets.Unicode("").tag(sync=True)
     clamp_to_sdr = traitlets.Bool(False).tag(sync=True)
+    display_width = traitlets.Unicode("100%").tag(sync=True)
+    image_rendering = traitlets.Unicode("auto").tag(sync=True)
 
     _esm = r'''
     function render({ model, el }) {
@@ -511,6 +534,14 @@ class HDRImage(anywidget.AnyWidget):
         const url = model.get("image_data_url");
         const label = model.get("label");
         const clamp = model.get("clamp_to_sdr");
+        const dw = model.get("display_width") || "100%";
+        const ir = model.get("image_rendering") || "auto";
+        const imgStyle = [
+          `width:${dw}`,
+          "height:auto",
+          `image-rendering:${ir}`,
+          clamp ? "dynamic-range-limit:standard" : "",
+        ].filter(Boolean).join("; ");
         el.innerHTML = `
           <style>
             .hi-card { font-family: system-ui, -apple-system, sans-serif; color: inherit;
@@ -522,15 +553,14 @@ class HDRImage(anywidget.AnyWidget):
               background: color-mix(in srgb, currentColor 10%, transparent); }
             .hi-img-wrap { background:#000; border-radius:8px; overflow:hidden; display:flex;
               justify-content:center; align-items:center; }
-            .hi-img-wrap img { max-width:100%; height:auto; display:block; }
+            .hi-img-wrap img { max-width:100%; display:block; }
           </style>
           <div class="hi-card">
             <div class="hi-label">${label}
               <span class="tag">dynamic-range-limit: ${clamp ? "standard" : "no-limit"}</span>
             </div>
             <div class="hi-img-wrap">
-              <img src="${url}" alt="${label}"
-                   style="${clamp ? "dynamic-range-limit: standard;" : ""}">
+              <img src="${url}" alt="${label}" style="${imgStyle}">
             </div>
           </div>
         `;
@@ -539,6 +569,8 @@ class HDRImage(anywidget.AnyWidget):
       model.on("change:clamp_to_sdr", rebuild);
       model.on("change:image_data_url", rebuild);
       model.on("change:label", rebuild);
+      model.on("change:display_width", rebuild);
+      model.on("change:image_rendering", rebuild);
     }
     export default { render };
     '''
