@@ -50,7 +50,15 @@
 </h1>
 
 
-<p align="center">Data visualization in HDR.</p>
+<p align="center">Data visualization in HDR</p>
+
+<samp>
+  <p align="center">
+    <a href="https://molab.marimo.io/github/ktaletsk/hdrviz/blob/main/notebook.py/wasm">
+      <img src="https://marimo.io/molab-shield.svg" alt="Open notebook">
+    </a>
+  </p>
+</samp>
 
 
 ## About
@@ -122,8 +130,6 @@ PNG bytes are the deliverable. Serve them from a backend, write them to disk, em
 - A fluorescence-microscopy frame from `scikit-image.data.cells3d`, where the membrane channel's ~150× native dynamic range is the showstopper
 
 ```bash
-git clone https://github.com/ktaletsk/hdrviz
-cd hdrviz
 marimo edit notebook.py --sandbox
 ```
 
