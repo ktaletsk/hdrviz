@@ -31,7 +31,7 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(PNG_DATA_URL, mo):
+def _(GLOW_HDR_DATA_URL, LOGO_DATA_URL, mo):
     banner = f"""
     <style>
       .hdr-hero {{
@@ -74,6 +74,17 @@ def _(PNG_DATA_URL, mo):
         background-clip: text;
         color: transparent;
         text-shadow: 0 0 22px rgba(251, 146, 60, 0.55);
+        transition: text-shadow 260ms ease, filter 260ms ease;
+        cursor: default;
+      }}
+      .hdr-hero h1 .glow:hover {{
+        background-image: url({GLOW_HDR_DATA_URL});
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+        -webkit-background-clip: text;
+        background-clip: text;
+        text-shadow: 0 0 42px rgba(253, 186, 116, 0.95);
+        filter: saturate(1.1);
       }}
       .hdr-hero__pill {{
         display: inline-flex;
@@ -149,19 +160,16 @@ def _(PNG_DATA_URL, mo):
       .hdr-hero__side {{
         display: flex;
         flex-direction: column;
-        gap: 10px;
-        border: 1px solid rgba(148, 163, 184, 0.25);
-        background: rgba(15, 23, 42, 0.55);
-        border-radius: 8px;
-        padding: 14px;
-        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+        align-items: center;
+        justify-content: center;
       }}
       .hdr-hero__side img {{
+        max-width: 250px;
         width: 100%;
         height: auto;
         display: block;
-        border-radius: 6px;
-        background: #000;
+        align-self: center;
+        border-radius: 6%;
       }}
     </style>
     <div class="hdr-hero">
@@ -180,7 +188,7 @@ def _(PNG_DATA_URL, mo):
           <p class="hdr-hero__byline"><a href="https://www.linkedin.com/in/taletskiy">Konstantin Taletskiy</a> &middot; <a href="https://github.com/ktaletsk/hdrviz">Repo</a></p>
         </div>
         <div class="hdr-hero__side">
-    <img src="{PNG_DATA_URL}" alt="HDR PNG sample">
+    <img src="{LOGO_DATA_URL}" alt="hdrviz logo">
         </div>
       </div>
     </div>
@@ -544,6 +552,29 @@ def _():
     LOGO_SVG_BYTES = pathlib.Path("assets/logo.svg").read_bytes()
     LOGO_DATA_URL = "data:image/svg+xml;base64," + base64.b64encode(LOGO_SVG_BYTES).decode("ascii")
     return LOGO_DATA_URL, PNG_DATA_URL, PNG_LABEL, XDR_FRAME_DATA_URL
+
+
+@app.cell
+def _(encode_hdr_png, to_data_url):
+    import numpy as _np
+
+    # Horizontal HDR gradient that mirrors the orbrx logo's golden-yellow glow.
+    # Channel values >= 1.0 push above peak_nits for the brightest pixels.
+    _W, _H = 800, 140
+    _peak_nits = 4000.0
+    _pts = _np.array([
+        [0.00, 1.00, 1.00, 0.55],   # bright yellow (almost white-yellow)
+        [0.50, 1.00, 0.95, 0.35],   # rich yellow
+        [1.00, 1.00, 0.85, 0.22],   # warm gold (still yellow-dominant)
+    ])
+    _x = _np.linspace(0.0, 1.0, _W)
+    _R = _np.interp(_x, _pts[:, 0], _pts[:, 1]) * _peak_nits
+    _G = _np.interp(_x, _pts[:, 0], _pts[:, 2]) * _peak_nits
+    _B = _np.interp(_x, _pts[:, 0], _pts[:, 3]) * _peak_nits
+    _rgb_strip = _np.stack([_R, _G, _B], axis=-1)
+    _rgb_nits  = _np.broadcast_to(_rgb_strip, (_H, _W, 3)).copy()
+    GLOW_HDR_DATA_URL = to_data_url(encode_hdr_png(_rgb_nits))
+    return (GLOW_HDR_DATA_URL,)
 
 
 @app.cell(hide_code=True)
