@@ -50,7 +50,7 @@ import numpy as np
 import traitlets
 from PIL import Image
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __all__ = [
     "DEFAULT_PQ_REC2020_ICC",
     "COLORMAP_LIBRARY",
@@ -393,6 +393,7 @@ def imshow(
     interior_mask: np.ndarray | None = None,
     label: str = "",
     display_width: str = "100%",
+    max_height_px: int = 360,
     image_rendering: str = "auto",
 ) -> "HDRImage":
     """Render a 2D numpy array as an HDR image. Returns an :class:`HDRImage` widget.
@@ -423,6 +424,9 @@ def imshow(
             (fills the parent column, browser scales the PNG to fit). Use
             ``"auto"`` to render at intrinsic pixel size, or e.g. ``"600px"`` /
             ``"50vw"`` for an explicit size.
+        max_height_px: Cap on rendered height in pixels. Default 360 keeps
+            tall outputs from triggering the host notebook's internal scrollbar.
+            Set to ``0`` to disable the cap.
         image_rendering: CSS ``image-rendering`` value, controlling how the
             browser interpolates when scaling. Default ``"auto"`` (smooth /
             bilinear). Use ``"pixelated"`` to preserve hard pixel edges (good
@@ -487,6 +491,7 @@ def imshow(
         image_data_url=to_data_url(png),
         label=label,
         display_width=display_width,
+        max_height_px=max_height_px,
         image_rendering=image_rendering,
     )
 
@@ -516,16 +521,20 @@ class HDRImage(anywidget.AnyWidget):
     A/B for showing HDR's contribution: same image, same display, one CSS
     property apart.
 
-    Sizing is controlled by two traits: ``display_width`` (any CSS width value;
-    default ``"100%"`` fills the parent column) and ``image_rendering`` (CSS
-    ``image-rendering``; default ``"auto"`` smooth, ``"pixelated"`` for raw
-    scientific data where hard pixel edges should be preserved).
+    Sizing is controlled by three traits: ``display_width`` (any CSS width
+    value; default ``"100%"`` fills the parent column), ``max_height_px``
+    (caps the rendered image height; default 360 px keeps tall outputs from
+    triggering the host notebook's internal scrollbar; set to ``0`` to disable
+    the cap), and ``image_rendering`` (CSS ``image-rendering``; default
+    ``"auto"`` smooth, ``"pixelated"`` for raw scientific data where hard
+    pixel edges should be preserved).
     """
 
     image_data_url = traitlets.Unicode("").tag(sync=True)
     label = traitlets.Unicode("").tag(sync=True)
     clamp_to_sdr = traitlets.Bool(False).tag(sync=True)
     display_width = traitlets.Unicode("100%").tag(sync=True)
+    max_height_px = traitlets.Int(360).tag(sync=True)
     image_rendering = traitlets.Unicode("auto").tag(sync=True)
 
     _esm = r'''
@@ -536,9 +545,12 @@ class HDRImage(anywidget.AnyWidget):
         const clamp = model.get("clamp_to_sdr");
         const dw = model.get("display_width") || "100%";
         const ir = model.get("image_rendering") || "auto";
+        const mh = Number(model.get("max_height_px")) || 0;
         const imgStyle = [
           `width:${dw}`,
           "height:auto",
+          mh > 0 ? `max-height:${mh}px` : "",
+          mh > 0 ? "object-fit:contain" : "",
           `image-rendering:${ir}`,
           clamp ? "dynamic-range-limit:standard" : "",
         ].filter(Boolean).join("; ");
@@ -570,6 +582,7 @@ class HDRImage(anywidget.AnyWidget):
       model.on("change:image_data_url", rebuild);
       model.on("change:label", rebuild);
       model.on("change:display_width", rebuild);
+      model.on("change:max_height_px", rebuild);
       model.on("change:image_rendering", rebuild);
     }
     export default { render };
