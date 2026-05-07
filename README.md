@@ -50,7 +50,9 @@
 </h1>
 
 
-Data visualization in HDR.
+<p align="center">Data visualization in HDR.</p>
+
+## About
 
 `hdrviz` is a minimal Python library (~250 lines) that renders 2D numpy arrays as PQ Rec2020-tagged PNGs for HDR-capable browsers.
 
