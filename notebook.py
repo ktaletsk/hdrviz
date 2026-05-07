@@ -34,6 +34,55 @@ def _():
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    <style>
+    .hv-term {
+      border-bottom: 1px dotted currentColor;
+      cursor: help;
+      position: relative;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .hv-term:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: #f8fafc;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      font-size: 0.85rem;
+      line-height: 1.4;
+      width: max-content;
+      max-width: 320px;
+      white-space: normal;
+      z-index: 1000;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+      pointer-events: none;
+      text-align: left;
+      font-weight: normal;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .hv-term:hover::before {
+      content: '';
+      position: absolute;
+      bottom: calc(100% + 2px);
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: #1e293b;
+      z-index: 1001;
+    }
+    </style>
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def _(GLOW_HDR_DATA_URL, LOGO_DATA_URL, mo):
     banner = f"""
     <style>
@@ -636,15 +685,15 @@ def _(mo):
     | Human eye, instantaneous (no adaptation) | ~16,000 : 1 | ~14 |
     | Human eye, with adaptation (night ↔ noon) | ~10⁹ : 1 | ~30 |
     | 8-bit JPEG | 256 : 1 | 8 |
-    | 10-bit HDR PNG (PQ Rec2020) | ~10⁵ : 1 effective | ~17 |
+    | 10-bit HDR PNG (<span class="hv-term" data-tip="Perceptual Quantizer (SMPTE ST 2084). The HDR luminance encoding used by HDR10 and HDR PNG.">PQ</span> <span class="hv-term" data-tip="ITU-R BT.2020: a wide-gamut color space (larger than sRGB or P3) used by HDR10.">Rec2020</span>) | ~10⁵ : 1 effective | ~17 |
     | 16-bit scientific CMOS sensor | ~30,000 : 1 | ~15 |
-    | 32-bit float FITS image | numerical: ~10⁷⁰ : 1 | (unbounded) |
+    | 32-bit float <span class="hv-term" data-tip="Flexible Image Transport System: the standard astronomy image file format, often 32-bit float.">FITS</span> image | numerical: ~10⁷⁰ : 1 | (unbounded) |
 
     | Where data is shown | max / min | stops |
     |---|---:|---:|
     | SDR display (sRGB, ~100 nits peak) | 100 : 1 | ~7 |
-    | HDR display (PQ, ~1000 nits peak) | ~1,000 : 1 | ~10 |
-    | Apple Pro Display XDR / MacBook Pro (sustained 1000 / peak 1600) | ~10,000 : 1 | ~13 |
+    | HDR display (<span class="hv-term" data-tip="Perceptual Quantizer (SMPTE ST 2084). The HDR luminance encoding used by HDR10 and HDR PNG.">PQ</span>, ~1000 nits peak) | ~1,000 : 1 | ~10 |
+    | Apple Pro Display <span class="hv-term" data-tip="Apple&#39;s branding for Extended Dynamic Range: their HDR display tier.">XDR</span> / MacBook Pro (sustained 1000 / peak 1600) | ~10,000 : 1 | ~13 |
 
     The display is usually the bottleneck. Most scientific data carries more information than your screen has been showing you — but only if you bother to render it that way.
     """)
@@ -935,19 +984,80 @@ def _(mo):
     mo.md(r"""
     ## PQ encoding
 
-    The PQ encoding (SMPTE ST 2084 / "perceptual quantizer") maps linear-light luminance in cd/m² to code values, designed so one code-value step ≈ one just-noticeable difference for the human visual system. The math is implemented in [colour-science](https://www.colour-science.org/):
+    A standard SDR monitor tops out around 100 nits; HDR displays reach 1000–4000. To represent that full range in a fixed-bit-depth image file (PNG channels are 8 or 10 bits), a linear encoding — `code = brightness × constant` — wastes most codes on bright-end differences the eye barely notices, while crushing detail in dark regions where the eye is most sensitive.
+
+    **PQ** (Perceptual Quantizer, defined in [SMPTE ST 2084](https://en.wikipedia.org/wiki/Perceptual_quantizer)) spaces codes according to human vision: one code step ≈ one *just-noticeable difference* in brightness. With 10 bits, PQ covers the full 0–10,000-nit range without visible banding.
+
+    In code (via [colour-science](https://www.colour-science.org/)):
 
     ```python
     from colour.models import eotf_inverse_ST2084
     pq_code = eotf_inverse_ST2084(rgb_nits)  # rgb_nits in [0, 10000], pq_code in [0, 1]
     ```
 
+    **Why is the function called `eotf_inverse_ST2084`?** ST 2084 defines an **EOTF** (Electro-Optical Transfer Function) — the curve a *display* uses to turn a stored code back into emitted light (`code → nits`). To encode a file you go the other way (`nits → code`), which is the *inverse* of that curve. Same math, opposite direction.
+
     That single line is the mathematical core of `hdrviz.encode_hdr_png`.
+    """)
+
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Linear vs PQ quantization, side by side
+
+    The same gradient (0 to 4000 nits, displayed left-to-right), encoded with 6-bit codes two ways and decoded back. **Left:** linear quantization — equally-spaced codes in nits, which puts most of the 64 levels in the bright half and leaves the dark end with visible bands. **Right:** PQ quantization — codes are distributed by perception, so more land in the shadows where vision is most sensitive. Same 6 bits, smooth gradient.
     """)
     return
 
 
 @app.cell
+def _(imshow, mo):
+    import numpy as _qnp
+    import colour as _qcolour
+
+    _GRAD_W, _GRAD_H = 720, 180
+    _GRAD_PEAK_NITS = 4000.0
+    _PQ_PEAK_NITS = 10000.0
+
+
+    def _quantize_linear(values_nits, bits, max_nits=_PQ_PEAK_NITS):
+        """Quantize values_nits to N bits via a linear code mapping, then decode back."""
+        levels = 2 ** bits - 1
+        codes = _qnp.round(_qnp.clip(values_nits, 0, max_nits) / max_nits * levels)
+        return codes / levels * max_nits
+
+
+    def _quantize_pq(values_nits, bits, max_nits=_PQ_PEAK_NITS):
+        """Quantize via PQ: nits -> PQ codes (in [0,1]) -> N-bit quantize -> EOTF -> nits."""
+        levels = 2 ** bits - 1
+        pq = _qcolour.models.eotf_inverse_ST2084(_qnp.clip(values_nits, 0, max_nits))
+        snapped = _qnp.round(pq * levels) / levels
+        return _qcolour.models.eotf_ST2084(_qnp.clip(snapped, 0, 1))
+
+
+    _grad_nits = _qnp.linspace(0, _GRAD_PEAK_NITS, _GRAD_W)
+    _lin_band = _qnp.tile(_quantize_linear(_grad_nits, bits=6), (_GRAD_H, 1))
+    _pq_band  = _qnp.tile(_quantize_pq(_grad_nits, bits=6),     (_GRAD_H, 1))
+
+    linear_quantized = imshow(
+        _lin_band, cmap="ember", peak_nits=_GRAD_PEAK_NITS,
+        normalize="linear", vmin=0, vmax=_GRAD_PEAK_NITS,
+        label="6-bit linear quantization (visible banding)",
+    )
+    pq_quantized = imshow(
+        _pq_band, cmap="ember", peak_nits=_GRAD_PEAK_NITS,
+        normalize="linear", vmin=0, vmax=_GRAD_PEAK_NITS,
+        label="6-bit PQ quantization (smooth)",
+    )
+    mo.hstack([linear_quantized, pq_quantized], gap=1, widths="equal")
+
+    return
+
+
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Demos
@@ -1320,7 +1430,7 @@ def _(mo):
 
     - **Astronomy** — deep-sky exposures combine bright stellar cores with faint nebular wings spanning 4–6 orders of magnitude.
     - **Fluorescence microscopy** — a single channel can span 2–3 orders of magnitude just from labeling density (bright cell membranes versus dim cytoplasm).
-    - **Fractals** — the smooth-iteration count near the Mandelbrot boundary is heavily skewed toward "just-escaped" pixels, with far higher density than the body.
+    - **Fractals** — the <span class="hv-term" data-tip="Continuous interpolation of the integer escape-iteration count; removes the visible color bands at integer boundaries.">smooth-iteration count</span> near the Mandelbrot boundary is heavily skewed toward "just-escaped" pixels, with far higher density than the body.
     - **Energy spectra and FFTs** — log-magnitude is often the only readable representation, precisely because the linear range is too wide.
     - **Density / kernel-estimate plots** — sharp peaks over near-uniform backgrounds.
     """)
@@ -1406,7 +1516,7 @@ def _(mo):
     mo.md(r"""
     ### Astronomy: Horsehead Nebula
 
-    A 19th-century photographic plate of B33 / IC 434, ~6× native dynamic range. Modest by deep-Hubble standards, but enough that the brightest stars and the Hα glow near Sigma Ori cross into HDR luminance while the dust silhouette stays in SDR.
+    A 19th-century photographic plate of <span class="hv-term" data-tip="Barnard 33: catalog identifier for the dark Horsehead nebula silhouette.">B33</span> / <span class="hv-term" data-tip="Index Catalogue 434: the bright red emission nebula that the Horsehead is silhouetted against.">IC 434</span>, ~6× native dynamic range. Modest by deep-Hubble standards, but enough that the brightest stars and the <span class="hv-term" data-tip="Hydrogen-alpha: emission line at 656.28 nm from ionized hydrogen; the dominant red glow in star-forming regions.">Hα</span> glow near <span class="hv-term" data-tip="Sigma Orionis: the multiple-star system illuminating IC 434.">Sigma Ori</span> cross into HDR luminance while the dust silhouette stays in SDR.
     """)
     return
 
@@ -1462,7 +1572,7 @@ def _(mo):
     mo.md(r"""
     ### Fluorescence microscopy
 
-    A specimen is tagged with a fluorescent dye or genetically encoded protein (e.g. GFP), excited at one wavelength, and longer-wavelength emission is captured by a camera through an optical filter. Each pixel reports the photon count integrated over the exposure window. Densely labeled features (cell membranes, nuclei) may collect tens of thousands of photons per pixel; faint cytoplasm or background may collect only a few, sitting near the camera's read-noise floor. **That spread is the dynamic range** — and the more of it you preserve, the more biology you can see in one frame.
+    A specimen is tagged with a fluorescent dye or genetically encoded protein (e.g. <span class="hv-term" data-tip="Green Fluorescent Protein: a 27-kDa protein from Aequorea victoria; engineered into target cells as a fluorescent label.">GFP</span>), excited at one wavelength, and longer-wavelength emission is captured by a camera through an optical filter. Each pixel reports the photon count integrated over the exposure window. Densely labeled features (cell membranes, nuclei) may collect tens of thousands of photons per pixel; faint cytoplasm or background may collect only a few, sitting near the camera's read-noise floor. **That spread is the dynamic range** — and the more of it you preserve, the more biology you can see in one frame.
 
     #### A short history of looking at fluorescent cells
 
@@ -1472,8 +1582,8 @@ def _(mo):
     | 1911 | Oskar Heimstädt builds the first fluorescence microscope (Reichert). Specimens viewed live through the eyepiece. |
     | 1950s–70s | Photographic film: long exposures, no realtime review |
     | 1980s–90s | Scientific CCDs (Photometrics, Princeton Instruments): ~12-bit digital, live preview |
-    | 2000s+ | EMCCDs, then sCMOS: ~16 bits, low read noise, full-frame at >100 fps |
-    | Today | Back-illuminated sCMOS at ~95% quantum efficiency; qCMOS for photon counting |
+    | 2000s+ | <span class="hv-term" data-tip="Electron-Multiplying CCD: a CCD with on-chip gain, giving very low effective read noise for low-light imaging.">EMCCDs</span>, then <span class="hv-term" data-tip="scientific CMOS: a CMOS sensor optimized for low noise and higher DR than consumer CMOS.">sCMOS</span>: ~16 bits, low read noise, full-frame at >100 fps |
+    | Today | Back-illuminated sCMOS at ~95% quantum efficiency; <span class="hv-term" data-tip="quantitative CMOS: a near-noise-free sCMOS variant capable of single-photon counting.">qCMOS</span> for photon counting |
 
     #### Modern camera dynamic range
 
@@ -1487,10 +1597,10 @@ def _(mo):
 
     #### Viv integration, sketched
 
-    [viv](https://github.com/hms-dbmi/viv) renders OME-Zarr / OME-TIFF tiles via WebGL canvas — fast, multi-channel, multi-resolution, deck.gl underneath. WebGL canvas does not currently emit HDR pixels in stable Chromium (verified earlier in this notebook via the `configureHighDynamicRange` API check). Two paths to HDR-viv:
+    [viv](https://github.com/hms-dbmi/viv) renders <span class="hv-term" data-tip="Open Microscopy Environment Zarr: a chunked-array bio-imaging container format for large images.">OME-Zarr</span> / <span class="hv-term" data-tip="Open Microscopy Environment TIFF: a TIFF variant with embedded XML metadata for bio-imaging.">OME-TIFF</span> tiles via WebGL canvas — fast, multi-channel, multi-resolution, <span class="hv-term" data-tip="deck.gl: an Uber-built WebGL framework for visualizing very large datasets in the browser.">deck.gl</span> underneath. WebGL canvas does not currently emit HDR pixels in stable Chromium (verified earlier in this notebook via the `configureHighDynamicRange` API check). Two paths to HDR-viv:
 
     1. **Tile-encoding path**: server pre-encodes each tile as a PQ Rec2020 PNG; viv composites them as `<img>` overlays instead of WebGL textures. Loses some shader-driven interactivity (channel mixing, gamma sliders) but gets HDR for free.
-    2. **Wait for browser shader-side HDR**: the `configureHighDynamicRange` API is in the WICG canvas-color-space draft. Once shipped, viv keeps its WebGL pipeline and opts the canvas into HDR mode.
+    2. **Wait for browser shader-side HDR**: the `configureHighDynamicRange` API is in the <span class="hv-term" data-tip="Web Incubator Community Group: the W3C process for incubating new web-platform features before standardization.">WICG</span> canvas-color-space draft. Once shipped, viv keeps its WebGL pipeline and opts the canvas into HDR mode.
     """)
     return
 
@@ -1587,7 +1697,7 @@ def _(mo):
     widget
     ```
 
-    The library is the smallest possible thing that works. Future work that would extend it:
+    Future work that would extend `hdrviz`:
 
     - **Browser API maturity** — when Chromium ships `configureHighDynamicRange()` for `<canvas>`, we can render directly without going through PNG encoding. That unlocks real-time HDR for animated and interactive content (pan/zoom, video, simulation).
     - **Matplotlib chrome** — borrow matplotlib for axes, ticks, and colorbars, composite our HDR `<img>` underneath. Currently the data area is HDR but there are no axis labels.
