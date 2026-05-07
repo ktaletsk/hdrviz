@@ -3,7 +3,7 @@
 #     "anywidget==0.11.0",
 #     "astropy==7.2.0",
 #     "colour-science==0.4.7",
-#     "hdrviz==0.2.0",
+#     "hdrviz==0.2.1",
 #     "marimo",
 #     "matplotlib==3.10.9",
 #     "numpy==2.4.4",
