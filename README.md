@@ -54,7 +54,7 @@
 
 <samp>
   <p align="center">
-    <a href="https://molab.marimo.io/github/ktaletsk/hdrviz/blob/main/notebook.py/wasm">
+    <a href="https://molab.marimo.io/notebooks/nb_BZUvR7ErRWjVb1RbnTD1kX/app">
       <img src="https://marimo.io/molab-shield.svg" alt="Open notebook">
     </a>
   </p>
